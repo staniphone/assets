@@ -42,6 +42,9 @@
     .btn.link{padding:6px 8px;border:none}
     .badge{display:inline-block;padding:6px 10px;border-radius:999px;font-weight:700;background:#e0f2fe;color:#0c4a6e;font-size:13px}
     .meta{color:var(--muted);font-size:13px}
+    label{display:block;font-weight:700;margin-bottom:6px;color:#0b1220}
+    input,select,textarea{width:100%;padding:11px 12px;border:1px solid #e5e7eb;border-radius:10px;font-size:15px;background:#fff}
+    textarea{resize:vertical;min-height:110px}
     .chips{display:flex;gap:8px;flex-wrap:wrap}
     .chip{padding:6px 10px;background:#eef2f7;color:#0f172a;border-radius:999px;font-size:12px}
     .votes{display:inline-flex;align-items:center;gap:8px;margin-top:4px}
@@ -59,6 +62,14 @@
     .modal{position:fixed;inset:0;background:rgba(0,0,0,.4);display:none;align-items:center;justify-content:center;padding:20px;z-index:70}
     .modal.open{display:flex}
     .modal .box{background:#fff;border-radius:14px;box-shadow:var(--shadow);padding:22px;max-width:420px;width:100%}
+    @media(max-width:820px){
+      #ideaForm .grid{grid-template-columns:repeat(6,1fr) !important}
+      #ideaForm .half{grid-column:span 6 !important}
+    }
+    @media(max-width:620px){
+      #ideaForm .grid{grid-template-columns:repeat(1,1fr) !important}
+      #ideaForm .half{grid-column:span 1 !important}
+    }
   </style>
 </head>
 <body>
