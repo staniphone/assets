@@ -318,30 +318,13 @@ function simulateActivity(PDO $pdo): array
     $events = [];
     $ideas = listIdeas($pdo);
 
-    if ($ideas && mt_rand(0, 100) > 40) {
-        // Simula voti su idee esistenti
-        $idea = $ideas[array_rand($ideas)];
-        voteIdea($pdo, (int)$idea['id']);
-        $events[] = 'Voto simulato su "' . $idea['title'] . '"';
-    } else {
-        // Crea una nuova idea sintetica
-        $districts = ['Centro Storico', 'Monterusciello', 'Toiano', 'Arco Felice', 'Lucrino', 'Licola'];
-        $themes = ['Mobilità', 'Ambiente', 'Scuola', 'Welfare', 'Sport e Cultura'];
-        $names = ['Giulia', 'Francesco', 'Chiara', 'Luca', 'Carmen', 'Mauro'];
-
-        $idea = [
-            'title' => 'Proposta lampo su ' . $themes[array_rand($themes)],
-            'desc' => 'Spunto rapido generato automaticamente per mantenere viva la discussione.',
-            'district' => $districts[array_rand($districts)],
-            'theme' => $themes[array_rand($themes)],
-            'author' => $names[array_rand($names)] . ' (auto)',
-            'author_email' => null,
-            'candidate_opt_in' => false,
-        ];
-
-        $created = createIdea($pdo, $idea);
-        $events[] = 'Nuova idea simulata: "' . $created['title'] . '"';
+    if (!$ideas) {
+        return ['Nessuna idea disponibile per simulare voti'];
     }
+
+    $idea = $ideas[array_rand($ideas)];
+    voteIdea($pdo, (int)$idea['id']);
+    $events[] = 'Voto simulato su "' . $idea['title'] . '"';
 
     return $events;
 }

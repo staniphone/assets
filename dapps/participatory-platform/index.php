@@ -1,5 +1,4 @@
 <?php
-// Front-end demo for the participatory platform (PHP + SQLite/MySQL backend)
 ?>
 <!DOCTYPE html>
 <html lang="it">
@@ -51,6 +50,10 @@
     .btn-like{border:1px solid #e5e7eb;background:#fff;border-radius:999px;padding:8px 12px;cursor:pointer;font-weight:700;transition:all 0.2s ease}
     .btn-like:hover{transform:translateY(-2px);box-shadow:0 4px 8px rgba(0,0,0,0.1)}
     .idea-card{display:flex;flex-direction:column;gap:8px}
+    .carousel{position:relative;display:grid;grid-template-columns:repeat(12,1fr);gap:16px;align-items:stretch}
+    .carousel-card{grid-column:span 12}
+    .carousel-card .card{height:100%;display:flex;flex-direction:column}
+    .carousel-controls{display:flex;justify-content:center;gap:10px;margin-top:12px}
     .stat{display:flex;flex-direction:column;align-items:center}
     .stat strong{font-size:28px;color:var(--blue)}
     .activity{background:#f0f9ff;border-left:4px solid var(--blue);padding:12px 16px;border-radius:12px;margin:16px 0}
@@ -124,9 +127,11 @@
       <div class="wrap">
         <h2 class="section-title">Idee in evidenza</h2>
         <div class="activity" id="activityFeed">Attività in caricamento…</div>
-        <div id="ideasGrid" class="grid" aria-live="polite" aria-busy="false"></div>
-        <div style="text-align:center; margin-top: 16px; display:flex; gap:10px; justify-content:center;">
-          <button class="btn ghost" id="reloadIdeas">Aggiorna</button>
+        <div id="ideaCarousel" class="carousel" aria-live="polite" aria-busy="false"></div>
+        <div class="carousel-controls">
+          <button class="btn ghost" id="prevIdea" aria-label="Idea precedente">⬅️</button>
+          <button class="btn ghost" id="nextIdea" aria-label="Idea successiva">➡️</button>
+          <button class="btn ghost" id="shuffleIdea" aria-label="Idea casuale">🔀</button>
           <button class="btn ghost" id="simulateBtn">Simula nuova attività</button>
         </div>
       </div>
@@ -225,7 +230,7 @@
   <footer style="background:#0b1220;color:#e5e7eb;padding:40px 20px;">
     <div class="wrap">
       <p><strong>IoCambioPozzuoli</strong> – movimento civico aperto. Scrivici: <a href="mailto:info@iocambiopozzuoli.it" style="color:#fde68a">info@iocambiopozzuoli.it</a></p>
-      <p id="privacy">Privacy: demo locale. Integra un vero backend prima di raccogliere dati reali.</p>
+      <p id="privacy">Privacy: trattiamo solo i dati necessari per le proposte e la candidatura.</p>
       <p>© <span id="year"></span> IoCambioPozzuoli. Tutti i diritti riservati.</p>
     </div>
   </footer>
@@ -259,26 +264,37 @@ const toast = (msg) => {
   setTimeout(() => el.classList.remove('show'), 1800);
 };
 
-async function loadIdeas() {
-  const grid = document.getElementById('ideasGrid');
-  grid.setAttribute('aria-busy','true');
-  grid.innerHTML = '<p class="meta" style="grid-column:span 12">Caricamento in corso…</p>';
-  const ideas = await api('ideas');
-  if (!ideas.length) {
-    grid.innerHTML = '<p class="meta" style="grid-column:span 12">Nessuna idea ancora. Pubblica la prima!</p>';
-    grid.setAttribute('aria-busy','false');
+let carouselIdeas = [];
+let carouselIndex = 0;
+let carouselTimer;
+
+function randomIndex(max, exclude) {
+  if (max <= 1) return 0;
+  let idx = Math.floor(Math.random() * max);
+  if (idx === exclude) {
+    idx = (idx + 1) % max;
+  }
+  return idx;
+}
+
+function renderIdea(idea) {
+  const wrap = document.getElementById('ideaCarousel');
+  wrap.setAttribute('aria-busy','true');
+  if (!idea) {
+    wrap.innerHTML = '<p class="meta" style="grid-column:span 12">Nessuna idea ancora: apri il back-office per pubblicare la prima.</p>';
+    wrap.setAttribute('aria-busy','false');
     return;
   }
-  grid.innerHTML = '';
-  ideas.forEach(idea => {
-    const card = document.createElement('article');
-    card.className = 'card idea-card';
-    card.style.gridColumn = 'span 6';
-    card.innerHTML = `
+
+  wrap.innerHTML = '';
+  const slot = document.createElement('div');
+  slot.className = 'carousel-card';
+  slot.innerHTML = `
+    <article class="card idea-card">
       <div class="chips"><span class="chip">${idea.theme || 'Tema libero'}</span><span class="chip">${idea.district}</span></div>
       <h3>${idea.title}</h3>
       <p>${idea.description}</p>
-      <p class="meta">Proposta da ${idea.author_name || 'Anonimo'} • ${idea.votes_count || 0} voti • ${idea.comments_count || 0} commenti</p>
+      <p class="meta">Proposta da ${idea.author_name || 'Anonimo'} • <span class="vote-count">${idea.votes_count || 0}</span> voti • ${idea.comments_count || 0} commenti</p>
       <div class="votes">
         <button class="btn-like" data-id="${idea.id}" aria-label="Vota">👍 Vota</button>
         <button class="btn ghost" data-comments="${idea.id}">💬 Commenti</button>
@@ -287,18 +303,51 @@ async function loadIdeas() {
         <summary>Commenti</summary>
         <div class="meta">Caricamento…</div>
       </details>
-    `;
-    card.querySelector('[data-id]').addEventListener('click', async () => {
-      await api('vote', { method: 'POST', body: JSON.stringify({ idea_id: idea.id }) });
-      toast('Voto registrato');
-      loadIdeas();
-      loadStats();
-      loadCandidates();
-    });
-    card.querySelector('[data-comments]').addEventListener('click', () => loadComments(idea.id));
-    grid.appendChild(card);
+    </article>
+  `;
+
+  wrap.appendChild(slot);
+
+  const voteBtn = slot.querySelector('[data-id]');
+  const voteCount = slot.querySelector('.vote-count');
+  voteBtn.addEventListener('click', async () => {
+    await api('vote', { method: 'POST', body: JSON.stringify({ idea_id: idea.id }) });
+    const current = parseInt(voteCount.textContent, 10) || 0;
+    voteCount.textContent = current + 1;
+    idea.votes_count = current + 1;
+    carouselIdeas[carouselIndex] = idea;
+    toast('Voto registrato');
+    loadStats();
+    loadCandidates();
   });
-  grid.setAttribute('aria-busy','false');
+
+  slot.querySelector('[data-comments]').addEventListener('click', () => loadComments(idea.id));
+  wrap.setAttribute('aria-busy','false');
+}
+
+function startCarousel() {
+  clearInterval(carouselTimer);
+  carouselTimer = setInterval(() => {
+    if (!carouselIdeas.length) return;
+    carouselIndex = randomIndex(carouselIdeas.length, carouselIndex);
+    renderIdea(carouselIdeas[carouselIndex]);
+  }, 8000);
+}
+
+async function loadIdeas() {
+  const wrap = document.getElementById('ideaCarousel');
+  wrap.setAttribute('aria-busy','true');
+  wrap.innerHTML = '<p class="meta" style="grid-column:span 12">Caricamento in corso…</p>';
+  const ideas = await api('ideas');
+  if (!ideas.length) {
+    carouselIdeas = [];
+    renderIdea(null);
+    return;
+  }
+  carouselIdeas = [...ideas].sort(() => Math.random() - 0.5);
+  carouselIndex = 0;
+  renderIdea(carouselIdeas[carouselIndex]);
+  startCarousel();
 }
 
 async function loadComments(ideaId) {
@@ -406,8 +455,25 @@ function bootstrap() {
   loadStats();
   loadCandidates();
   document.getElementById('ideaForm').addEventListener('submit', submitIdea);
-  document.getElementById('reloadIdeas').addEventListener('click', loadIdeas);
   document.getElementById('simulateBtn').addEventListener('click', simulate);
+  document.getElementById('prevIdea').addEventListener('click', () => {
+    if (!carouselIdeas.length) return;
+    carouselIndex = (carouselIndex - 1 + carouselIdeas.length) % carouselIdeas.length;
+    renderIdea(carouselIdeas[carouselIndex]);
+    startCarousel();
+  });
+  document.getElementById('nextIdea').addEventListener('click', () => {
+    if (!carouselIdeas.length) return;
+    carouselIndex = (carouselIndex + 1) % carouselIdeas.length;
+    renderIdea(carouselIdeas[carouselIndex]);
+    startCarousel();
+  });
+  document.getElementById('shuffleIdea').addEventListener('click', () => {
+    if (!carouselIdeas.length) return;
+    carouselIndex = randomIndex(carouselIdeas.length, carouselIndex);
+    renderIdea(carouselIdeas[carouselIndex]);
+    startCarousel();
+  });
   document.getElementById('loginCancel').addEventListener('click', ()=> document.getElementById('loginModal').classList.remove('open'));
   document.getElementById('loginSend').addEventListener('click', ()=>{
     const email = (document.getElementById('loginEmail').value||'').trim();
