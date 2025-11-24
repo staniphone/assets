@@ -16,6 +16,8 @@ CREATE TABLE IF NOT EXISTS ideas (
   author_name VARCHAR(120),
   author_email VARCHAR(255),
   candidate_opt_in TINYINT(1) DEFAULT 0,
+  status VARCHAR(20) DEFAULT 'pending',
+  published_at TIMESTAMP NULL DEFAULT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   user_id INT,
   CONSTRAINT fk_user_id FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL

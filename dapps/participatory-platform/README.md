@@ -1,22 +1,17 @@
-# Piattaforma partecipativa (demo PHP + MySQL/SQLite)
+# Piattaforma partecipativa
 
-Questa cartella contiene una versione dimostrativa della piattaforma civica descritta:
-- pubblicazione di idee per quartiere/tema
-- voti e commenti senza login obbligatorio
-- candidatura automatica dopo 10 voti reali sulle proprie idee (o opt-in manuale)
-- simulatore di attività che aggiunge voti/idee random per mantenere la pagina viva
+Applicazione PHP + MySQL/SQLite pronta per la messa in produzione con front-end pubblico e backoffice di moderazione.
 
-## Avvio rapido con SQLite (demo)
-1. Assicurati di avere PHP 8+ installato.
-2. Avvia il server locale dalla cartella del progetto:
-   ```bash
-   php -S 0.0.0.0:8080 -t dapps/participatory-platform
-   ```
-3. Apri <http://localhost:8080> e inizia a proporre idee.
+## Caratteristiche
+- Invio proposte con quartiere, tema, candidatura opzionale
+- Voti e commenti pubblici (1 voto per sessione)
+- Stato idee: in revisione, pubblicata, archiviata
+- Dashboard backoffice per pubblicare/archiviare, inserire idee, eliminare contenuti
+- Statistiche live (idee pubblicate, voti, commenti, distretti attivi)
+- Database MySQL per produzione, SQLite per sviluppo rapido
 
-## Uso con MySQL
-1. Crea un database e applica lo schema `schema.sql`.
-2. Esporta variabili d'ambiente prima di avviare PHP:
+## Configurazione
+1. Imposta il database (consigliato MySQL in produzione):
    ```bash
    export PARTICIPATORY_DB_DRIVER=mysql
    export PARTICIPATORY_DB_HOST=localhost
@@ -24,18 +19,36 @@ Questa cartella contiene una versione dimostrativa della piattaforma civica desc
    export PARTICIPATORY_DB_USER=utente
    export PARTICIPATORY_DB_PASS=segreto
    ```
-3. Avvia il server come sopra. Le tabelle verranno create se mancanti.
+   Senza variabili usa SQLite locale (`storage.sqlite`).
 
-## Endpoint principali (`api.php`)
-- `GET api.php?action=ideas` – elenco idee con conteggio voti/commenti.
-- `POST api.php?action=ideas` – crea idea (`title`, `desc`, `district`, `theme`, `author`, `author_email`, `candidate_opt_in`).
-- `POST api.php?action=vote` – aggiunge voto a una idea (`idea_id`). Il token del votante è gestito via sessione.
-- `POST api.php?action=comment` – commento rapido (`idea_id`, `author`, `body`).
-- `GET api.php?action=candidates` – candidabili (email presente + 10 voti complessivi o opt-in).
-- `GET api.php?action=activity` – statistiche e feed recente.
-- `POST api.php?action=simulate` – genera in automatico voti o nuove idee (disattivabile con `PARTICIPATORY_ALLOW_SIMULATION=false`).
+2. Proteggi il backoffice definendo le credenziali:
+   ```bash
+   export PARTICIPATORY_ADMIN_USER=admin
+   export PARTICIPATORY_ADMIN_PASS=password-sicura
+   # in alternativa
+   export PARTICIPATORY_ADMIN_TOKEN=token-lungo
+   ```
 
-## Note
-- Di default viene usato SQLite locale (`storage.sqlite`), utile per test immediati senza credenziali.
-- Per produzione abilita MySQL e proteggi `api.php` con rate-limit/CORS secondo necessità.
-- Il front-end chiama periodicamente `simulate` per mantenere il flusso di attività, come richiesto dal concept.
+3. (Opzionale) Abilita l'endpoint di simulazione voti solo se necessario per ambienti di staging:
+   ```bash
+   export PARTICIPATORY_ALLOW_SIMULATION=true
+   ```
+   Se la variabile non è presente la simulazione è disattivata.
+
+4. Avvia il server PHP:
+   ```bash
+   php -S 0.0.0.0:8080 -t dapps/participatory-platform
+   ```
+
+## Routing
+- `index.php` – landing pubblica con carosello idee, voti, commenti e form di proposta
+- `api.php` – endpoint JSON (idee, voti, commenti, candidabili, attività, operazioni admin)
+- `admin.php` – backoffice protetto con moderazione e inserimento manuale
+
+## Schema
+Lo schema MySQL/SQLite si trova in `schema.sql` e viene applicato automaticamente all'avvio. Le colonne `status` e `published_at` vengono aggiunte anche su basi dati esistenti.
+
+## Note operative
+- Le idee inviate dal pubblico entrano in stato `pending` e diventano pubbliche solo dopo pubblicazione dal backoffice.
+- Il carosello si aggiorna periodicamente leggendo i dati reali, senza generare idee fittizie.
+- Proteggi `api.php` con rate limiting/CORS secondo le policy del tuo hosting.

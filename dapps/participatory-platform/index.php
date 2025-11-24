@@ -132,7 +132,6 @@
           <button class="btn ghost" id="prevIdea" aria-label="Idea precedente">⬅️</button>
           <button class="btn ghost" id="nextIdea" aria-label="Idea successiva">➡️</button>
           <button class="btn ghost" id="shuffleIdea" aria-label="Idea casuale">🔀</button>
-          <button class="btn ghost" id="simulateBtn">Simula nuova attività</button>
         </div>
       </div>
     </section>
@@ -432,7 +431,7 @@ async function submitIdea(e) {
     msg.textContent = res.error;
     msg.style.color = 'var(--danger)';
   } else {
-    msg.textContent = 'Idea inviata e visibile in lista!';
+    msg.textContent = 'Proposta inviata. Il backoffice la pubblicherà dopo la revisione.';
     msg.style.color = 'var(--ok)';
     document.getElementById('ideaForm').reset();
     loadIdeas();
@@ -442,20 +441,12 @@ async function submitIdea(e) {
   btn.disabled = false;
 }
 
-async function simulate() {
-  await api('simulate', { method: 'POST' });
-  loadIdeas();
-  loadStats();
-  loadCandidates();
-}
-
 function bootstrap() {
   document.getElementById('year').textContent = new Date().getFullYear();
   loadIdeas();
   loadStats();
   loadCandidates();
   document.getElementById('ideaForm').addEventListener('submit', submitIdea);
-  document.getElementById('simulateBtn').addEventListener('click', simulate);
   document.getElementById('prevIdea').addEventListener('click', () => {
     if (!carouselIdeas.length) return;
     carouselIndex = (carouselIndex - 1 + carouselIdeas.length) % carouselIdeas.length;
@@ -481,8 +472,7 @@ function bootstrap() {
     if(!email){ msg.textContent = 'Email non valida'; msg.style.color = 'var(--danger)'; return; }
     msg.textContent = 'Link di accesso inviato!'; msg.style.color = 'var(--ok)';
   });
-  setInterval(simulate, 15000);
-  setInterval(loadStats, 12000);
+  setInterval(() => { loadIdeas(); loadStats(); loadCandidates(); }, 15000);
 }
 
 document.addEventListener('DOMContentLoaded', bootstrap);

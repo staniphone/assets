@@ -68,6 +68,39 @@ try {
             echo json_encode(['simulated' => true, 'events' => $events]);
             break;
 
+        case 'admin-ideas':
+            requireAdminAuth();
+            echo json_encode(listIdeas($pdo, true));
+            break;
+
+        case 'admin-stats':
+            requireAdminAuth();
+            echo json_encode(adminStats($pdo));
+            break;
+
+        case 'admin-status':
+            requireAdminAuth();
+            ensurePost($method);
+            $payload = jsonInput();
+            echo json_encode(updateIdeaStatus($pdo, (int)($payload['idea_id'] ?? 0), (string)($payload['status'] ?? 'pending')));
+            break;
+
+        case 'admin-delete':
+            requireAdminAuth();
+            ensurePost($method);
+            $payload = jsonInput();
+            deleteIdea($pdo, (int)($payload['idea_id'] ?? 0));
+            echo json_encode(['success' => true]);
+            break;
+
+        case 'admin-create':
+            requireAdminAuth();
+            ensurePost($method);
+            $payload = jsonInput();
+            $idea = createIdea($pdo, $payload, true);
+            echo json_encode(['success' => true, 'idea' => $idea]);
+            break;
+
         default:
             $responseCode = 404;
             http_response_code($responseCode);
@@ -98,10 +131,39 @@ function ensurePost(string $method): void
     }
 }
 
-function listIdeas(PDO $pdo): array
+function requireAdminAuth(): void
 {
+    $token = trim((string)(getenv('PARTICIPATORY_ADMIN_TOKEN') ?: ''));
+    $user = getenv('PARTICIPATORY_ADMIN_USER') ?: '';
+    $pass = getenv('PARTICIPATORY_ADMIN_PASS') ?: '';
+
+    $authorized = false;
+
+    $authHeader = $_SERVER['HTTP_AUTHORIZATION'] ?? '';
+    if ($token !== '' && stripos($authHeader, 'Bearer ') === 0) {
+        $provided = trim(substr($authHeader, 7));
+        $authorized = hash_equals($token, $provided);
+    }
+
+    if (!$authorized && $user !== '' && $pass !== '') {
+        $providedUser = $_SERVER['PHP_AUTH_USER'] ?? null;
+        $providedPass = $_SERVER['PHP_AUTH_PW'] ?? null;
+        $authorized = $providedUser === $user && $providedPass === $pass;
+    }
+
+    if (!$authorized) {
+        header('WWW-Authenticate: Basic realm="Backoffice"');
+        http_response_code(401);
+        echo json_encode(['error' => 'Autorizzazione amministratore richiesta']);
+        exit;
+    }
+}
+
+function listIdeas(PDO $pdo, bool $includeAll = false): array
+{
+    $where = $includeAll ? '' : "WHERE i.status = 'published'";
     $sql = <<<SQL
-    SELECT i.*, 
+    SELECT i.*,
            COALESCE(v.votes_count, 0) AS votes_count,
            COALESCE(c.comments_count, 0) AS comments_count
     FROM ideas i
@@ -111,15 +173,16 @@ function listIdeas(PDO $pdo): array
     LEFT JOIN (
       SELECT idea_id, COUNT(*) AS comments_count FROM comments GROUP BY idea_id
     ) c ON c.idea_id = i.id
+    {$where}
     ORDER BY votes_count DESC, i.created_at DESC
-    LIMIT 50;
+    LIMIT 100;
     SQL;
 
     $stmt = $pdo->query($sql);
     return $stmt->fetchAll();
 }
 
-function createIdea(PDO $pdo, array $payload): array
+function createIdea(PDO $pdo, array $payload, bool $isAdmin = false): array
 {
     $title = trim((string)($payload['title'] ?? ''));
     $description = trim((string)($payload['desc'] ?? ''));
@@ -137,6 +200,10 @@ function createIdea(PDO $pdo, array $payload): array
     $authorName = trim((string)($payload['author'] ?? 'Anonimo'));
     $authorEmail = trim((string)($payload['author_email'] ?? ''));
     $candidateOptIn = !empty($payload['candidate_opt_in']);
+    $status = $isAdmin ? (string)($payload['status'] ?? 'published') : ((string)getenv('PARTICIPATORY_DEFAULT_STATUS') ?: 'pending');
+    if (!in_array($status, ['pending', 'published', 'archived'], true)) {
+        $status = $isAdmin ? 'published' : 'pending';
+    }
 
     $pdo->beginTransaction();
 
@@ -145,7 +212,9 @@ function createIdea(PDO $pdo, array $payload): array
         $userId = ensureUser($pdo, $authorEmail, $authorName);
     }
 
-    $stmt = $pdo->prepare('INSERT INTO ideas(title, description, district, theme, author_name, author_email, candidate_opt_in, user_id) VALUES(?,?,?,?,?,?,?,?)');
+    $publishedAt = $status === 'published' ? date('c') : null;
+
+    $stmt = $pdo->prepare('INSERT INTO ideas(title, description, district, theme, author_name, author_email, candidate_opt_in, status, published_at, user_id) VALUES(?,?,?,?,?,?,?,?,?,?)');
     $stmt->execute([
         $title,
         $description,
@@ -154,6 +223,8 @@ function createIdea(PDO $pdo, array $payload): array
         $authorName,
         $authorEmail !== '' ? $authorEmail : null,
         $candidateOptIn ? 1 : 0,
+        $status,
+        $publishedAt,
         $userId,
     ]);
 
@@ -259,7 +330,7 @@ function listCandidates(PDO $pdo): array
     LEFT JOIN (
       SELECT idea_id, COUNT(*) AS votes_count FROM votes GROUP BY idea_id
     ) v ON v.idea_id = i.id
-    WHERE author_email IS NOT NULL AND author_email != ''
+    WHERE author_email IS NOT NULL AND author_email != '' AND i.status = 'published'
     GROUP BY candidate_key, name
     HAVING votes >= 10 OR opt_in = 1
     ORDER BY votes DESC, ideas DESC
@@ -283,15 +354,61 @@ function listCandidates(PDO $pdo): array
     return $candidates;
 }
 
+function adminStats(PDO $pdo): array
+{
+    $published = (int)$pdo->query("SELECT COUNT(*) FROM ideas WHERE status = 'published'")->fetchColumn();
+    $pending = (int)$pdo->query("SELECT COUNT(*) FROM ideas WHERE status = 'pending'")->fetchColumn();
+    $archived = (int)$pdo->query("SELECT COUNT(*) FROM ideas WHERE status = 'archived'")->fetchColumn();
+
+    $topDistrict = $pdo->query("SELECT district, COUNT(*) AS n FROM ideas WHERE status = 'published' GROUP BY district ORDER BY n DESC LIMIT 1")->fetch();
+
+    return [
+        'published' => $published,
+        'pending' => $pending,
+        'archived' => $archived,
+        'votes' => (int)$pdo->query('SELECT COUNT(*) FROM votes')->fetchColumn(),
+        'comments' => (int)$pdo->query('SELECT COUNT(*) FROM comments')->fetchColumn(),
+        'best_district' => $topDistrict ? $topDistrict['district'] : null,
+    ];
+}
+
+function updateIdeaStatus(PDO $pdo, int $ideaId, string $status): array
+{
+    if ($ideaId <= 0) {
+        throw new InvalidArgumentException('ID idea mancante');
+    }
+
+    if (!in_array($status, ['pending', 'published', 'archived'], true)) {
+        throw new InvalidArgumentException('Stato non valido');
+    }
+
+    getIdea($pdo, $ideaId);
+
+    $publishedAt = $status === 'published' ? date('c') : null;
+    $stmt = $pdo->prepare('UPDATE ideas SET status = ?, published_at = ? WHERE id = ?');
+    $stmt->execute([$status, $publishedAt, $ideaId]);
+
+    return getIdea($pdo, $ideaId);
+}
+
+function deleteIdea(PDO $pdo, int $ideaId): void
+{
+    if ($ideaId <= 0) {
+        throw new InvalidArgumentException('ID idea mancante');
+    }
+    $stmt = $pdo->prepare('DELETE FROM ideas WHERE id = ?');
+    $stmt->execute([$ideaId]);
+}
+
 function activitySnapshot(PDO $pdo): array
 {
     $stats = [
-        'total_ideas' => (int)$pdo->query('SELECT COUNT(*) FROM ideas')->fetchColumn(),
+        'total_ideas' => (int)$pdo->query("SELECT COUNT(*) FROM ideas WHERE status = 'published'")->fetchColumn(),
         'total_votes' => (int)$pdo->query('SELECT COUNT(*) FROM votes')->fetchColumn(),
         'active_users' => (int)$pdo->query('SELECT COUNT(DISTINCT voter_token) FROM votes')->fetchColumn(),
     ];
 
-    $latestIdea = $pdo->query('SELECT title, district FROM ideas ORDER BY created_at DESC LIMIT 1')->fetch();
+    $latestIdea = $pdo->query("SELECT title, district FROM ideas WHERE status = 'published' ORDER BY COALESCE(published_at, created_at) DESC LIMIT 1")->fetch();
     $latestComment = $pdo->query('SELECT body FROM comments ORDER BY created_at DESC LIMIT 1')->fetch();
 
     $recent = 'Community attiva in tutti i quartieri.';
@@ -308,7 +425,11 @@ function activitySnapshot(PDO $pdo): array
 function ensureSimulationAllowed(): void
 {
     $allowed = getenv('PARTICIPATORY_ALLOW_SIMULATION');
-    if ($allowed !== false && $allowed !== '' && !filter_var($allowed, FILTER_VALIDATE_BOOLEAN)) {
+    if ($allowed === false || $allowed === '') {
+        throw new RuntimeException('Simulazione disabilitata');
+    }
+
+    if (!filter_var($allowed, FILTER_VALIDATE_BOOLEAN)) {
         throw new RuntimeException('Simulazione disabilitata');
     }
 }

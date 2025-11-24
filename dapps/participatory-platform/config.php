@@ -4,7 +4,7 @@ declare(strict_types=1);
 /**
  * Simple PDO factory for the participatory platform.
  * Uses MySQL when the PARTICIPATORY_DB_DRIVER env var is set to "mysql",
- * otherwise falls back to a local SQLite database for easier demos.
+ * otherwise falls back to a local SQLite database for local development.
  */
 function participatory_pdo(): PDO
 {
@@ -56,6 +56,8 @@ function initializeDatabase(PDO $pdo): void
             author_name VARCHAR(120),
             author_email VARCHAR(255),
             candidate_opt_in TINYINT(1) DEFAULT 0,
+            status VARCHAR(20) DEFAULT 'pending',
+            published_at TIMESTAMP NULL DEFAULT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             user_id INT,
             CONSTRAINT fk_user_id FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
@@ -98,11 +100,13 @@ function initializeDatabase(PDO $pdo): void
             author_name TEXT,
             author_email TEXT,
             candidate_opt_in INTEGER DEFAULT 0,
+            status TEXT DEFAULT 'pending',
+            published_at TEXT DEFAULT NULL,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
             user_id INTEGER,
             FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE SET NULL
         );
-
+    
         CREATE TABLE IF NOT EXISTS votes (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             idea_id INTEGER NOT NULL,
@@ -124,4 +128,34 @@ function initializeDatabase(PDO $pdo): void
     }
 
     $pdo->exec($sql);
+
+    // Ensure new columns exist when upgrading existing installations
+    ensureColumn($pdo, 'ideas', 'status', $driver === 'mysql' ? "VARCHAR(20) NOT NULL DEFAULT 'pending'" : "TEXT NOT NULL DEFAULT 'pending'");
+    ensureColumn($pdo, 'ideas', 'published_at', $driver === 'mysql' ? 'TIMESTAMP NULL DEFAULT NULL' : 'TEXT DEFAULT NULL');
+}
+
+function ensureColumn(PDO $pdo, string $table, string $column, string $definition): void
+{
+    $driver = $pdo->getAttribute(PDO::ATTR_DRIVER_NAME);
+
+    if ($driver === 'mysql') {
+        $stmt = $pdo->prepare('SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?');
+        $stmt->execute([$table, $column]);
+        if ((int)$stmt->fetchColumn() === 0) {
+            $pdo->exec("ALTER TABLE {$table} ADD COLUMN {$column} {$definition}");
+        }
+    } else {
+        $stmt = $pdo->prepare('PRAGMA table_info(' . $table . ')');
+        $stmt->execute();
+        $exists = false;
+        foreach ($stmt->fetchAll() as $col) {
+            if (strcasecmp($col['name'], $column) === 0) {
+                $exists = true;
+                break;
+            }
+        }
+        if (!$exists) {
+            $pdo->exec("ALTER TABLE {$table} ADD COLUMN {$column} {$definition}");
+        }
+    }
 }
