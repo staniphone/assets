@@ -8,13 +8,13 @@ declare(strict_types=1);
  */
 function participatory_pdo(): PDO
 {
-    $driver = getenv('PARTICIPATORY_DB_DRIVER') ?: 'sqlite';
+    $driver = getenv('PARTICIPATORY_DB_DRIVER') ?: 'mysql';
 
     if ($driver === 'mysql') {
-        $host = getenv('PARTICIPATORY_DB_HOST') ?: '127.0.0.1';
-        $name = getenv('PARTICIPATORY_DB_NAME') ?: 'participation';
-        $user = getenv('PARTICIPATORY_DB_USER') ?: 'root';
-        $pass = getenv('PARTICIPATORY_DB_PASS') ?: '';
+        $host = getenv('PARTICIPATORY_DB_HOST') ?: 'localhost';
+        $name = getenv('PARTICIPATORY_DB_NAME') ?: 'iocambio';
+        $user = getenv('PARTICIPATORY_DB_USER') ?: 'cambio_u';
+        $pass = getenv('PARTICIPATORY_DB_PASS') ?: 'Stanislao08!';
 
         $dsn = sprintf('mysql:host=%s;dbname=%s;charset=utf8mb4', $host, $name);
         $pdo = new PDO($dsn, $user, $pass, [

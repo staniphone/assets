@@ -134,8 +134,8 @@ function ensurePost(string $method): void
 function requireAdminAuth(): void
 {
     $token = trim((string)(getenv('PARTICIPATORY_ADMIN_TOKEN') ?: ''));
-    $user = getenv('PARTICIPATORY_ADMIN_USER') ?: '';
-    $pass = getenv('PARTICIPATORY_ADMIN_PASS') ?: '';
+    $user = getenv('PARTICIPATORY_ADMIN_USER') ?: 'stanislao';
+    $pass = getenv('PARTICIPATORY_ADMIN_PASS') ?: 'Stanislao08!!';
 
     $authorized = false;
 

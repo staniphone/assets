@@ -15,16 +15,16 @@ Applicazione PHP + MySQL/SQLite pronta per la messa in produzione con front-end 
    ```bash
    export PARTICIPATORY_DB_DRIVER=mysql
    export PARTICIPATORY_DB_HOST=localhost
-   export PARTICIPATORY_DB_NAME=nome_database
-   export PARTICIPATORY_DB_USER=utente
-   export PARTICIPATORY_DB_PASS=segreto
+   export PARTICIPATORY_DB_NAME=iocambio
+   export PARTICIPATORY_DB_USER=cambio_u
+   export PARTICIPATORY_DB_PASS=Stanislao08!
    ```
    Senza variabili usa SQLite locale (`storage.sqlite`).
 
 2. Proteggi il backoffice definendo le credenziali:
    ```bash
-   export PARTICIPATORY_ADMIN_USER=admin
-   export PARTICIPATORY_ADMIN_PASS=password-sicura
+   export PARTICIPATORY_ADMIN_USER=stanislao
+   export PARTICIPATORY_ADMIN_PASS=Stanislao08!!
    # in alternativa
    export PARTICIPATORY_ADMIN_TOKEN=token-lungo
    ```
